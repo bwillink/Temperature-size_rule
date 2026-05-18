@@ -1,0 +1,14 @@
+# Ignore data and output directories
+data/
+output/
+old_versions/
+
+# R
+scripts/.Rhistory
+.scripts/RData
+scripts/.Rproj.user/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
