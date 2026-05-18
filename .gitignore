@@ -1,5 +1,4 @@
 # Ignore data and output directories
-data/
 output/
 old_versions/
 
