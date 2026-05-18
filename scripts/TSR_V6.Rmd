@@ -1396,3 +1396,7 @@ grid <- grid.arrange(grobs=plot_list, ncol=2)
 
 #ggsave(grid, filename = "../output/ASE_v3.pdf", device = "pdf", width = 180, height = 220, units = "mm", dpi = 600)
 ```
+
+```{r}
+sessionInfo()
+```
