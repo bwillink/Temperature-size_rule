@@ -5,7 +5,8 @@ old_versions/
 
 # R
 scripts/.Rhistory
-.scripts/RData
+scripts/RData
+scripts/TSR_V6.html
 scripts/.Rproj.user/
 
 # Logs and temp files
