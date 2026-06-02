@@ -72,7 +72,12 @@ SHARING/ACCESS INFORMATION
 5. Was data derived from another source? Yes, a phylogenetic tree was derived from the literature.
 
 	A. If yes, list source(s): 
-	 Phylogeny: Simon, S., Letsch, H., Bank, S., Buckley, T.R., Donath, A., Liu, S., Machida, R., Meusemann, K., Misof, B., Podsiadlowski, L., et al. 2019 Old World and New World Phasmatodea: Phylogenomics Resolve the Evolutionary History of Stick and Leaf Insects. Frontiers in Ecology and Evolution Volume 7 - 2019. (doi:10.3389/fevo.2019.00345).
+	 Phylogeny:
+	 
+	 Dennis, A.B., L.T. Dunning, B.J. Sinclair, and T.R. Buckley. 2015. Parallel molecular routes to cold adaptation in eight genera of New Zealand stick insects. Scientific Reports, 5: 13965.
+	 
+	 Dunning, L.T., G. Thomson, A.B. Dennis, B.J. Sinclair, R.D. Newcomb, and T.R. Buckley. 2013. Positive selection in glycolysis among Australasian stick insects. BMC Evolutionary Biology, 13: 215. 
+
 
 6. Recommended citation for this dataset: 
 
@@ -214,7 +219,7 @@ DATA-SPECIFIC INFORMATION FOR: stick_tree.tre
 
 3. Number of taxa: 8
 
-4. Notes: dated species tree from Simons et al. 2019
+4. Notes: species tree from Dunning et al. 2013, Dennis et al 2015
 
 #########################################################################
 
