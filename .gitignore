@@ -1,11 +1,13 @@
 # Ignore data and output directories
+ls
 output/
 old_versions/
+bias_explanation.odt
 
 # R
 scripts/.Rhistory
 scripts/RData
-scripts/TSR_V6.html
+scripts/TSR_R1.html
 scripts/.Rproj.user/
 
 # Logs and temp files

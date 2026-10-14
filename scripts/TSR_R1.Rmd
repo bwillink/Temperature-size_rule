@@ -2,7 +2,7 @@
 title: |
   | "Code for:
   **The temperature-size ‘rule’ and its underlying mechanisms are not universal: evidence from New Zealand stick insects**"
-authors: "Claudio A. Cubillos, Brent J. Sinclair, Beatriz Willink, and Thomas R. Buckley"
+authors: ""
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -51,9 +51,10 @@ Load custom functions and create global variables.
 
 ```{r}
 script_fp <- "./"
-source(paste0(script_fp, "TSR_utils.R"))
+source(paste0(script_fp, "TSR_utils_R1.R"))
 
 dat_fp <-"../data/raw/"
+
 
 # read tree
 tre <- read.tree(paste0(dat_fp, "stick_tree.tre"))
@@ -64,10 +65,6 @@ tre<-nnls.tree(cophenetic(tre),tre, method = "ultrametric")
 # phylogenetic distance matrix
 inv.phylo<-inverseA(tre,nodes="TIPS",scale=TRUE) 
 
-# standard prior for residual variance (R) and parameter expanded prior for random effect
-pr1 = list(R=list(V=1,nu = 0.002),
-               G =list(G1=list(V=diag(1),nu=1000,alpha.mu=rep(0,1),alpha.V=diag(1)),
-                       G2=list(V=diag(1),nu=1000,alpha.mu=rep(0,1),alpha.V=diag(1))))
 
 # define MCMC parameters
 post_n <- 3000
@@ -139,47 +136,6 @@ p0
 ```
 
 
-Let's also look at the contribution of each instar to total growth (mass at the end of final instar).
-
-```{r}
-
-Rel_growth <- dat %>% mutate(Exp_growth = Initial.mass + Mass.last.instar) %>%
-  mutate(Fourth.rel.growth = Mass.gain.fourth.instar / Exp_growth,
-         Fifth.rel.growth = Mass.gain.fifth.instar / Exp_growth,
-         Last.rel.growth = Mass.gain.last.instar / Exp_growth) %>% 
-  dplyr::select(full_id, species, acclimation, contains("rel")) %>%
-  pivot_longer(cols = contains("rel"), names_to = "Instar", values_to = "Rel_growth") %>%
-  mutate(Instar = gsub(".rel.growth", "", Instar))
-
-outlier <- which(Rel_growth$full_id == "AXG-BG-4" & Rel_growth$Instar == "Fourth")
-Rel_growth <- Rel_growth[-outlier,]
-
-outlier <- which(Rel_growth$Rel_growth < 0)
-Rel_growth <- Rel_growth[-outlier,]
-
-Rel_growth$Instar <- factor(Rel_growth$Instar, 
-                                     levels = c("Fourth", "Fifth", "Last"))
-
-ave_RG <- aggregate(Rel_growth$Rel_growth, by = list(Rel_growth$species), FUN = mean, na.rm = T)
-colnames(ave_RG)[1] <- "species"
-
-
-rg <- ggplot(Rel_growth, aes(x = Instar, y = Rel_growth, colour = as.factor(acclimation))) + 
-   #geom_jitter(size = 2, width = 0.2) +
-   geom_boxplot(fill = NA) +
-    geom_hline(data = ave_RG, aes(yintercept = x), color = "gray", lty = 2) +
-    scale_color_manual(values = pal[1:2]) +
-    # species to separate panels
-    facet_wrap(~species, ncol = 4) +
-    theme_light() +
-  labs(color = "Temperature", y = "Relative growth")
-
-rg
-
-#ggsave("~/Dropbox/Collaborations/TSR/Rel_growth.pdf", rg, device = "pdf", width = 180, height = 120, units = "mm", dpi = 600)
-```
-
-
 We first look at the DDG processes (thermal sensitivity of developmental and growth rates) and realized patterns (differences in mass between rearing temperatures) for each developmental stage from fourth instar nymph to end of the last instar.
 
 ```{r}
@@ -209,10 +165,12 @@ dat_l <- dat %>% dplyr::select(!contains("Mass.gain.")) %>%
     "sixth" = "last"
   ))
 
-# remove the individual whose mass increased 14x in the fourth instar
-outlier <- which((dat_l$full_id == "AXG-BG-4" & dat_l$Instar == "fourth") | (dat_l$full_id == "AXG-BG-4" & dat_l$Instar == "fifth"))
+# remove the individual whose mass increased 14x in the fourth instar and the one that moulted instantly
+dat_l <- dat_l %>% filter(full_id != "AXG-BG-4")  %>% filter(full_id != "CLH-BG-28")
 
-dat_l <- dat_l[-outlier,]
+# growth rate update
+dat_l$GR <- log(dat_l$Mass/dat_l$StartM, base = 10)/dat_l$Days
+
 ```
 
 ## Growth and Development
@@ -237,8 +195,8 @@ df_full_proc <- dat_l %>%
     DR = mean(DR, na.rm = TRUE),
     GR =  mean(GR, na.rm = TRUE),
     Mass = mean(Mass, na.rm = TRUE),
-    species = species,
-    acclimation = acclimation,
+    species = head(species,1),
+    acclimation = head(acclimation,1),
     # Add a label for the average row, ensuring the column type matches
     # other columns (e.g., using 'Avg' for a character column)
     .groups = 'drop' # Recommended to drop groups after summarizing
@@ -381,6 +339,7 @@ p1.1
 ave_GR <-  aggregate(dat_l$GR, by = list(dat_l$species), FUN = mean, na.rm = T)
 colnames(ave_GR)[1] <- "species"
 
+
 p2 <-  ggplot(data = df_combined, aes(y = GR, x = Instar, color = as.factor(acclimation))) +
   geom_point(size = 1, alpha = .6) +
     geom_line(lty =3, linewidth = 0.3, data = dat_l, aes(group = full_id)) +
@@ -390,13 +349,17 @@ p2 <-  ggplot(data = df_combined, aes(y = GR, x = Instar, color = as.factor(accl
   scale_color_manual(values = pal) +
   theme_minimal(base_size = 9) + 
   theme(legend.position = "top", panel.grid = element_blank(), panel.border = element_rect(color = "gray"), axis.ticks = element_line(color = "grey")) +
-  labs(y = bquote('Growth rate (mass * days to '*moult^-1*')'), x = "Instar", color = "Acclimation \ntemperature (\u00B0C)") +
+ labs(y = expression(atop("Growth rate",
+                         "(Log"[10]*"(mass ratio)" %.% "days to moult"^-1*")")),
+     x = "Instar",
+     color = "Acclimation \ntemperature (\u00B0C)") +
   theme(strip.text.x = element_text(hjust = 0, vjust = 1, margin=margin(l=0)))
 
 p2
 
-#ggsave("../output/Raw_GR.pdf", p2, device = "pdf", width = 180, height = 120, units = "mm", dpi = 600)
+#ggsave("../output/R1/Raw_GR.pdf", p2, device = "pdf", width = 180, height = 120, units = "mm", dpi = 600)
 ```
+
 
 ```{r}
 p2.1 <- ggplot(data = df_rxn, aes(y = GR_rxn, x = Instar)) +
@@ -415,13 +378,13 @@ p2.1 <- ggplot(data = df_rxn, aes(y = GR_rxn, x = Instar)) +
 
 p2.1
 
-#ggsave("../output/Raw_GR_insets.pdf", p2.1, device = "pdf", width = 64, height = 32, units = "mm", dpi = 600)
+#ggsave("../output/R1/Raw_GR_insets.pdf", p2.1, device = "pdf", width = 64, height = 32, units = "mm", dpi = 600)
 ```
 
 
 ## Thermal sensitivity of development and growth rates
 
-Center and scale rate variables to make them comparable. This also removes two data points with instantaneous development.
+Stagger rates into single column
 
 ```{r}
 dat_l_proc <- prep_rate_dat (data = dat_l, group =list(dat_l$species), dev_rate=dat_l$DR, growth_rate = dat_l$GR)
@@ -433,7 +396,7 @@ dat_l_proc$Instar <- factor(dat_l_proc$Instar,
 
 ### Analysis
 
-Estimate species, instar, and trait-specific slopes with MCMCglmm. "acclimation" is treated as a factor, so we will obtain posterior distributions for rates at 10 and 20 C, and then compute their difference to obtain a posterior distribution for each trait-specific slope.
+Estimate species, instar, and trait-specific slopes with MCMCglmm. "acclimation" is treated as a factor, so we will obtain posterior distributions for rates at 10 and 20 C, and then compute their ratio to obtain a posterior distribution for each trait-specific q10.
 
 ```{r, warning=FALSE}
 # MCMCglmm hates tibble
@@ -442,42 +405,48 @@ class(dat_l_proc) <- "data.frame"
 # acclimation as factor
 dat_l_proc$acclimation <- as.factor(dat_l_proc$acclimation)
 
+s2 <- tapply(dat_l_proc$value, dat_l_proc$rate, sd, na.rm = TRUE)   # length 2
+
+## prior with variance from each rate category
+pr1 <- list(R  = list(V = diag(as.numeric(s2)^2), nu = 3), 
+            G  = list(G1 = list(V = diag(2), nu = 1000, alpha.mu = rep(0, 2), alpha.V  = diag(as.numeric(s2)^2)
+)))
+
+
 # we are not interested in fixed effects per se
-m1 <- MCMCglmm(value ~ species:Instar:rate:acclimation - 1,
-               # but we want to estimate species-specific rates at each temperature
-               random = ~ species + full_id,
-               ginverse=list(species=inv.phylo$Ainv),
-               # assuming here that the errors follow a normal distr
-               family = "gaussian",
-               data = dat_l_proc,
-               prior = pr1,
-               pl = TRUE,
-               slice = TRUE,
-               nitt = post_n*thin + burnin,
-               burnin = burnin,
-               thin = thin,
-               verbose = F
+m1 <- MCMCglmm(
+  value ~ species:Instar:rate:acclimation - 1,
+  random = ~ us(rate):full_id,
+  rcov   = ~ us(rate):units,
+  family = "gaussian",
+  data   = dat_l_proc,
+  prior  = pr1,
+  pl = TRUE,
+  verbose = FALSE,
+  nitt     = post_n * thin + burnin,
+  burnin   = burnin,
+  thin     = thin
 )
 
 ```
 
 Quick mcmc diagnostics -- everything looks good enough, not printing results
 ```{r, echo=FALSE, results='hide'}
-#traceplot(m1$Sol)
+#traceplot(m1$VCV)
 ```
 
 ### Processing output
 
 Organize and compute posterior distributions of interest.
 ```{r}
-post_final <- process_rate_glmm(mcmc = m1$Sol, post_n = post_n, n_species = 8, n_stages =3, n_traits = 2, n_temp = 2)
+post_final <- process_rate_glmm(m1$Sol, post_n, n_species = 8, n_stages = 3, n_traits = 2, n_temp = 2)
 
 post_final$instar <- factor(post_final$instar, 
                                      levels = c("fourth", "fifth", "sixth"))
 #head(post_final)
 ```
 
-Plot posterior distributions of reaction norm differences between developmental and growth rates. Positive values indicate a growth/development process consistent with TSR.
+Plot posterior distributions of reaction norm differences between developmental and growth rates. Positive values indicate a growth-development process consistent with TSR.
 
 ```{r}
 
@@ -485,7 +454,7 @@ process_within_p <- plot_posteriors(
   data = post_final,
   x = post_final$rule,
   colors = "D",
-  x_label = "Difference in reaction norm (development - growth)",
+    x_label = "Difference in reaction norm (development - growth)",
   low_label = "Sensitive development",
   high_label = "Sensitive growth",
   main = "Development-growth differential"
@@ -494,14 +463,14 @@ process_within_p <- plot_posteriors(
 process_within_p 
 
 
-#ggsave("../output/process_within_posteriors.pdf", process_within_p, device = "pdf", width = 180, height = 200, units = "mm", dpi = 600)
+#ggsave("../output/R1/process_within_posteriors.pdf", process_within_p, device = "pdf", width = 180, height = 200, units = "mm", dpi = 600)
 ```
 
 Compute support
 
 ```{r, message=FALSE}
 post_summ <- post_final %>% group_by(species,instar) %>% 
-  summarise(mean = mean(dev - growth),
+  summarise(median = median(dev - growth),
             lwr = HPDinterval(mcmc(dev - growth))[1],
             upr = HPDinterval(mcmc(dev - growth))[2],
             P_tsr = sum((dev - growth) < 0)/3000) # probability of opposite to TSR
@@ -518,72 +487,13 @@ post_summ %>% kbl(digits=3) %>%
 #write.table(post_summ, file = "../output/TSR_process_stage_summary.csv", quote = F, row.names = F, sep = ",")
 ```
 
-Estimate contrasts
-
-```{r, message=FALSE}
-
-# between acclimation temperatures
-temp_cont <- post_final %>% group_by(species,instar) %>% 
-  summarise(mean_dev = mean(dev),
-            lwr_dev = HPDinterval(mcmc(dev))[1],
-            upr_dev = HPDinterval(mcmc(dev))[2],
-            P_dev = sum((dev < 0)/3000), 
-            mean_gr = mean(growth),
-            lwr_gr = HPDinterval(mcmc(growth))[1],
-            upr_gr = HPDinterval(mcmc(growth))[2],
-            P_gr = sum((growth < 0)/3000),) # probability of opposite to TSR
-
-temp_cont %>% kbl(digits=3) %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed"),
-    full_width = FALSE,
-    position = "center",
-    font_size = 12
-  )
-
-#write.table(temp_cont, "../output/temperature_contrasts.csv", row.names = F, quote = F, sep = ",")
-
-# re-process model results to compute contrasts between stages
-post_stage <-  process_rate_stage_glmm(mcmc = m1$Sol, post_n = post_n, n_species = 8, n_stages =3, n_traits = 2, n_temp = 2)
-
-# between stages
-#t1 = fifth - fourth (transition 1); t2 = sixth - fifth (transition 2)
-stage_cont <- post_stage %>% group_by(species,temp) %>% 
-  summarise(mean_t1_dev = mean(t1_dev),
-            lwr_t1_dev = HPDinterval(mcmc(t1_dev))[1],
-            upr_t1_dev = HPDinterval(mcmc(t1_dev))[2],
-            P_t1_dev = 1- sum((t1_dev < 0)/3000), 
-            mean_t1_gr = mean(t1_growth),
-            lwr_t1_gr = HPDinterval(mcmc(t1_growth))[1],
-            upr_t1_gr = HPDinterval(mcmc(t1_growth))[2],
-            P_t1_gr = sum((t1_growth < 0)/3000),
-            mean_t2_dev = mean( t2_dev),
-            lwr_t2_dev = HPDinterval(mcmc( t2_dev))[1],
-            upr_t2_dev = HPDinterval(mcmc( t2_dev))[2],
-            P_t2_dev = 1- sum(( t2_dev < 0)/3000), 
-            mean_t2_gr = mean( t2_growth),
-            lwr_t2_gr = HPDinterval(mcmc( t2_growth))[1],
-            upr_t2_gr = HPDinterval(mcmc( t2_growth))[2],
-            P_t2_gr = sum(( t2_growth < 0)/3000))
-
-stage_cont %>% kbl(digits=3) %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed"),
-    full_width = FALSE,
-    position = "center",
-    font_size = 12
-  ) 
-#write.table(stage_cont, "../output/development_contrasts.csv", row.names = F, quote = F, sep = ",")
-```
-
-
 ## Final size outcome
 
-Center and scale mass so we can look at TSR patterns across species.
+Use final mass + initial mass covariate vs using mass ratio
 ```{r}
-# zero - centered and scaled to SD
-dat_l <-transform(dat_l, z_score=ave(dat_l$Mass, list(dat_l$species), FUN=scale))
-dat_l <-transform(dat_l, z_cov=ave(dat_l$StartM, list(dat_l$species), FUN=scale))
+dat_l$logMf <- log10(dat_l$Mass)
+dat_l$logMi <- log10(dat_l$StartM)
+dat_l$L     <- dat_l$logMf - dat_l$logMi     # same L as in the DDG analysis
 ```
 
 
@@ -594,23 +504,27 @@ Estimate stage and species-specific "acclimation" effect with MCMCglmm. "acclima
 ```{r, warning=FALSE}
 dat_l$acclimation <- as.factor(dat_l$acclimation)
 
-# we are not interested in fixed effects per se
-m2 <- MCMCglmm(z_score ~ species:Instar:acclimation + z_cov -1,
-               # but we want to estimate species-specific rates at each temperature
-               random = ~ species + full_id,
-               ginverse=list(species=inv.phylo$Ainv),
-               # assuming here that the errors follow a normal distr
-               family = "gaussian",
-               data = dat_l,
-               prior = pr1,
-               pl = TRUE,
-               slice = TRUE,
-               nitt = post_n*thin + burnin,
-               burnin = burnin,
-               thin = thin,
-               # save species-specific estimates
-               verbose = F
+# get SDs
+sMf <- sd(dat_l$logMf, na.rm = TRUE)
+sL  <- sd(dat_l$L,     na.rm = TRUE)
+
+## half-normal on the full_id SD with scale = 1 response SD, as before.
+
+mk_prior <- function(s) list(
+  R = list(V = s^2, nu = 0.002),
+  G = list(G1 = list(V = diag(1), nu = 1000,
+                     alpha.mu = 0, alpha.V = diag(1) * s^2))
 )
+
+
+m2 <- MCMCglmm(logMf ~ species:Instar:acclimation - 1 + logMi,
+               random  = ~ full_id,
+               family  = "gaussian",
+               data    = dat_l,
+               prior   = mk_prior(sL),
+               pl      = TRUE,
+               nitt    = post_n * thin + burnin,
+               burnin  = burnin, thin = thin, verbose = FALSE)
 
 ```
 
@@ -647,7 +561,7 @@ pattern_within_p <- plot_posteriors(
 
 pattern_within_p
 
-#ggsave("../output/pattern_within_posteriors.pdf", pattern_within_p, device = "pdf", width = 180, height = 200, units = "mm", dpi = 600)
+#ggsave("../output/R1/pattern_within_posteriors.pdf", pattern_within_p, device = "pdf", width = 180, height = 200, units = "mm", dpi = 600)
 
 ```
 
@@ -655,7 +569,7 @@ Compute support
 
 ```{r, message=FALSE}
 post_mass_summ <- post_final_mass %>% group_by(species,instar) %>% 
-  summarise(mean = mean(diff),
+  summarise(median = median(diff),
             lwr = HPDinterval(mcmc(diff))[1],
             upr = HPDinterval(mcmc(diff))[2],
             P_tsr = sum((diff) < 0)/3000) # P of greater mass in warmer T
@@ -672,53 +586,6 @@ post_mass_summ %>% kbl(digits=3) %>%
 #write.table(post_mass_summ, file = "../output/TSR_pattern_stage_summary.csv", quote = F, row.names = F, sep = ",")
 ```
 
-Estimate contrasts
-
-```{r, message=FALSE}
-# between acclimation temperatures
-temp_cont_size <- post_final_mass %>% group_by(species,instar) %>% 
-  summarise(mean_size = mean(diff),
-            lwr_size = HPDinterval(mcmc(diff))[1],
-            upr_size = HPDinterval(mcmc(diff))[2],
-            P_size = sum((diff < 0)/3000)) # probability of opposite to TSR
-
-temp_cont_size %>% kbl(digits=3) %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed"),
-    full_width = FALSE,
-    position = "center",
-    font_size = 12
-  )
-
-#write.table(temp_cont_size, "../output/temperature_contrasts_mass.csv", row.names = F, quote = F, sep = ",")
-
-# re-process model results to compute contrasts between stages
-post_stage_size <-  process_mass_stage_glmm(mcmc = m2$Sol, post_n = post_n, n_species = 8, n_stages =3, n_traits = 1, n_temp = 2)
-
-# between stages
-#t1 = fifth - fourth (transition 1); t2 = sixth - fifth (transition 2)
-stage_cont_size <- post_stage_size %>% 
-  group_by(species, temp) %>% 
-  summarise(mean_t1 = mean(t1),
-            lwr_t1 = HPDinterval(mcmc(t1))[1],
-            upr_t1 = HPDinterval(mcmc(t1))[2],
-            P_t1= 1- sum((t1 < 0)/3000), 
-            mean_t2 = mean( t2),
-            lwr_t2 = HPDinterval(mcmc( t2))[1],
-            upr_t2 = HPDinterval(mcmc( t2))[2],
-            P_t2 = 1- sum(( t2 < 0)/3000))
-
-stage_cont_size %>% kbl(digits=3) %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed"),
-    full_width = FALSE,
-    position = "center",
-    font_size = 12
-  )
-
-#write.table(stage_cont_size, "../output/development_contrasts_mass.csv", row.names = F, quote = F, sep = ",")
-```
-
 # Full growth period
 
 Next we look at the entire growth period from the start of the fourth instar to end of the last nymph instar.
@@ -727,7 +594,7 @@ Next we look at the entire growth period from the start of the fourth instar to 
 
 ```{r, warning=FALSE, message=FALSE}
 # first we exclude adults
-dat_full <- dat_l %>%
+dat_full <- dat_l %>% filter(full_id != "AXG-BG-4") %>%
   group_by(full_id, species, acclimation) %>%
  # developmental time will be the sum of developmental times across nymph instars
   summarise(Days = sum(Days),
@@ -736,11 +603,12 @@ dat_full <- dat_l %>%
             # the starting mass will be the starting mass for the fourth instar
             StartM = StartM[Instar == "fourth"]) %>%
   # re calculate rates
-  mutate(GR = (Mass/Days),DR = 1/Days, Instar = "All")
+  mutate(GR = log(Mass/StartM, base = 10)/Days, DR = 1/Days, Instar = "All")
 ```
 
 ## Thermal sensitivity of development and growth rates
-Center and scale rate variables to make them comparable. This also removes two data points with instantaneous development.
+
+Stagger the two rate categories in a single variable.
 
 ```{r}
 dat_full_proc <- prep_rate_dat (data = dat_full, dev_rate=dat_full$DR, growth_rate = dat_full$GR)
@@ -757,17 +625,18 @@ class(dat_full_proc) <- "data.frame"
 # acclimation as factor
 dat_full_proc$acclimation <- as.factor(dat_full_proc$acclimation)
 
-# we are not interested in fixed effects per se
+s2 <- tapply(dat_full_proc$value, dat_full_proc$rate, sd, na.rm = TRUE)   # length 2
+
+## prior with variance from each rate category
+pr1 <- list(R  = list(V = diag(as.numeric(s2)^2), nu = 3))
+
 m3 <- MCMCglmm(value ~ species:rate:acclimation - 1,
-               # but we want to estimate species-specific rates at each temperature
-               random = ~ species + full_id,
-               ginverse=list(species=inv.phylo$Ainv),
-               # assuming here that the errors follow a normal distr
+               random = NULL,
+               rcov   = ~ us(rate):units,
                family = "gaussian",
                data = dat_full_proc,
                prior = pr1,
                pl = TRUE,
-               slice = TRUE,
                nitt = post_n*thin + burnin,
                burnin = burnin,
                thin = thin,
@@ -839,14 +708,14 @@ process_full_across_p <- plot_posteriors(
 
 process_full_across_p 
 
-#ggsave("../output/process_full_across_posteriors.pdf", process_full_across_p, device = "pdf", width = 90, height = 200, units = "mm", dpi = 600)
+#ggsave("../output/R1/process_full_across_posteriors.pdf", process_full_across_p, device = "pdf", width = 90, height = 200, units = "mm", dpi = 600)
 ```
 
 Compute support
 
 ```{r, message=FALSE}
 post_full_summ <- post_full_final %>% group_by(species,instar) %>% 
-  summarise(mean = mean(dev - growth),
+  summarise(median = median(dev - growth),
             lwr = HPDinterval(mcmc(dev - growth))[1],
             upr = HPDinterval(mcmc(dev - growth))[2],
             P_tsr = sum((dev - growth) < 0)/3000) # probability of opposite to TSR
@@ -864,39 +733,13 @@ post_full_summ %>% kbl(digits=3) %>%
 #write.table(post_full_summ, file = "../output/TSR_process_full_summary.csv", quote = F, row.names = F, sep = ",")
 ```
 
-Estimate contrasts
-
-```{r, message=FALSE}
-# between acclimation temperatures
-
-temp_cont_full <- post_full_final %>% group_by(species,instar) %>% 
-  summarise(mean_dev = mean(dev),
-            lwr_dev = HPDinterval(mcmc(dev))[1],
-            upr_dev = HPDinterval(mcmc(dev))[2],
-            P_dev = sum((dev < 0)/3000), 
-            mean_gr = mean(growth),
-            lwr_gr = HPDinterval(mcmc(growth))[1],
-            upr_gr = HPDinterval(mcmc(growth))[2],
-            P_gr = sum((growth < 0)/3000),) # probability of opposite to TSR
-
-temp_cont_full %>% kbl(digits=3) %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed"),
-    full_width = FALSE,
-    position = "center",
-    font_size = 12
-  )
-
-#write.table(temp_cont_full, "../output/temperature_contrasts_full.csv", row.names = F, quote = F, sep = ",")
-```
-
 ## Final size outcome
-Center and scale mass so we can look at patterns across species.
 
+Use final mass + initial mass covariate vs using mass ratio
 ```{r}
-# zero - centered and scaled to SD
-dat_full <-transform(dat_full, z_score=ave(dat_full$Mass,  FUN=scale))
-dat_full <-transform(dat_full, z_cov=ave(dat_full$StartM,  FUN=scale))
+dat_full$logMf <- log10(dat_full$Mass)
+dat_full$logMi <- log10(dat_full$StartM)
+dat_full$L     <- dat_full$logMf - dat_full$logMi     # same L as in the DDG analysis
 ```
 
 ### Analysis
@@ -905,21 +748,24 @@ Estimate species-specific "acclimation" effect with MCMCglmm. "acclimation" is t
 ```{r, warning=FALSE}
 dat_full$acclimation <- as.factor(dat_full$acclimation)
 
-# we are not interested in fixed effects per se
-m4 <- MCMCglmm(z_score ~ species:acclimation + z_cov -1,
-               # but we want to estimate species-specific rates at each temperature
-               random = ~ species + full_id,
-               ginverse=list(species=inv.phylo$Ainv),
-               # assuming here that the errors follow a normal distr
+# get SDs
+sMf <- sd(dat_full$logMf, na.rm = TRUE)
+sL  <- sd(dat_full$L,     na.rm = TRUE)
+
+## half-normal on the full_id SD with scale = 1 response SD, as before.
+
+mk_prior <- function(s) list(
+  R = list(V = s^2, nu = 0.002))
+
+m4 <- MCMCglmm(logMf ~ species:acclimation - 1 + logMi ,
+               random = NULL,
                family = "gaussian",
                data = dat_full,
-               prior = pr1,
+               prior = mk_prior(sL),
                pl = TRUE,
-               slice = TRUE,
                nitt = post_n*thin + burnin,
                burnin = burnin,
                thin = thin,
-               # save species-specific estimates
                verbose = F
 )
 
@@ -984,14 +830,14 @@ pattern_full_across_p <- plot_posteriors(
 
 pattern_full_across_p
 
-#ggsave("../output/pattern_full_across_posteriors.pdf", pattern_full_across_p, device = "pdf", width = 90, height = 200, units = "mm", dpi = 600)
+#ggsave("../output/R1/pattern_full_across_posteriors.pdf", pattern_full_across_p, device = "pdf", width = 90, height = 200, units = "mm", dpi = 600)
 
 ```
 
 Compute support
 ```{r, message=FALSE}
 post_full_mass_summ <- post_full_mass %>% group_by(species,instar) %>% 
-  summarise(mean = mean(diff),
+  summarise(median = median(diff),
             lwr = HPDinterval(mcmc(diff))[1],
             upr = HPDinterval(mcmc(diff))[2],
             P_tsr = sum((diff) < 0)/3000) # P of greater mass in warmer T
@@ -1008,32 +854,12 @@ post_full_mass_summ %>% kbl(digits=3) %>%
 # write.table(post_full_mass_summ, file = "../output/TSR_pattern_full_summary.csv", quote = F, row.names = F, sep = ",")
 ```
 
-Estimate contrasts
-
-```{r, message=FALSE}
-# between acclimation temperatures
-temp_cont_full_mass <- post_full_mass %>% group_by(species,instar) %>% 
-  summarise(mean_diff = mean(diff),
-            lwr_diff = HPDinterval(mcmc(diff))[1],
-            upr_diff = HPDinterval(mcmc(diff))[2],
-            P_diff = sum((diff < 0)/3000)) # probability of opposite to TSR
-
-temp_cont_full_mass %>% kbl(digits=3) %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed"),
-    full_width = FALSE,
-    position = "center",
-    font_size = 12
-  )
-
-#write.table(temp_cont_full_mass, "../output/temperature_contrasts_full_mass.csv", row.names = F, quote = F, sep = ",")
-```
 
 # TSR evolution
 
 ## Prep data
 
-Compile mean estimates from all models
+Compile median estimates from all models
 
 ```{r, message=FALSE}
 tree_file <- "../data/raw/stick_tree.tre"
@@ -1041,23 +867,23 @@ tree_file <- "../data/raw/stick_tree.tre"
 tree <- read.tree(tree_file)
 
 process_stage <- post_summ %>%
-  dplyr::select(c(species,instar,mean)) %>%
-  pivot_wider(names_from = instar, values_from = mean) %>%
+  dplyr::select(c(species,instar,median)) %>%
+  pivot_wider(names_from = instar, values_from = median) %>%
   rename(fourth_process = fourth, fifth_process = fifth, last_process = sixth)
 
 pattern_stage <- post_mass_summ %>%
-  dplyr::select(c(species,instar,mean)) %>%
-  pivot_wider(names_from = instar, values_from = mean) %>%
+  dplyr::select(c(species,instar,median)) %>%
+  pivot_wider(names_from = instar, values_from = median) %>%
   rename(fourth_pattern = fourth, fifth_pattern = fifth, last_pattern = sixth)
 
 process_full <- post_full_summ %>%
-  dplyr::select(c(species,instar,mean)) %>%
-  pivot_wider(names_from = instar, values_from = mean) %>%
+  dplyr::select(c(species,instar,median)) %>%
+  pivot_wider(names_from = instar, values_from = median) %>%
   rename(full_process = All)
 
 pattern_full <- post_full_mass_summ %>%
-  dplyr::select(c(species,instar,mean)) %>%
-  pivot_wider(names_from = instar, values_from = mean) %>%
+  dplyr::select(c(species,instar,median)) %>%
+  pivot_wider(names_from = instar, values_from = median) %>%
   rename(full_pattern = All)
 
 traits <- left_join(process_stage, pattern_stage) %>% 
@@ -1129,20 +955,14 @@ sig_tips_1 <- rep(4, 15)
 names(sig_tips_1) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
 sig_tips_1[names(sig_tips_1) %in% sig_tips_names_1] <- 6
 
-near_sig_tips_names_1 <- post_summ$species[post_summ$instar == "fourth" & (post_summ$P_tsr < 0.1 & post_summ$P_tsr > 0.05  | post_summ$P_tsr < 0.95 & post_summ$P_tsr > 0.90) ]
-near_sig_tips_1 <- rep(4, 15)
-names(near_sig_tips_1) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
-near_sig_tips_1[names(near_sig_tips_1) %in% near_sig_tips_names_1] <- 5
-
 proc_4 <- ggtree(tree) +
   geom_tiplab(size = 2, offset = .001) +
   geom_nodepoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[[1]])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_1), color = "grey20") +
-  #geom_tippoint(aes(size = near_sig_tips_1), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[[1]])), size = 3.5) +
   scale_color_viridis(option = "viridis",  limits = c(global_process_min, global_process_max), begin = 0.3) +
-  scale_size_continuous(range = c(4, 5.5),guide = "none") +
+  scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
   labs(title = titles[1], subtitle = "Fourth", color = "") +
    theme(plot.title = element_text(hjust = 0.5)) +
   theme(
@@ -1162,20 +982,15 @@ sig_tips_2 <- rep(4, 15)
 names(sig_tips_2) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
 sig_tips_2[names(sig_tips_2) %in% sig_tips_names_2] <- 6
 
-near_sig_tips_names_2 <- post_summ$species[post_summ$instar == "fifth" & (post_summ$P_tsr < 0.1 & post_summ$P_tsr > 0.05  | post_summ$P_tsr < 0.95 & post_summ$P_tsr > 0.90) ]
-near_sig_tips_2 <- rep(4, 15)
-names(near_sig_tips_2) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
-near_sig_tips_2[names(near_sig_tips_2) %in% near_sig_tips_names_2] <- 5
-
 proc_5 <- ggtree(tree) +
   geom_tiplab(size = 2, offset = .001) +
   geom_nodepoint(size = 4) +
+   geom_tippoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[[2]])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_2), color = "grey20") +
- # geom_tippoint(aes(size = near_sig_tips_2), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[[2]])), size = 3.5) +
   scale_color_viridis(option = "viridis",  limits = c(global_process_min, global_process_max), begin = 0.3) +
-   scale_size_continuous(range = c(4, 5.5),guide = "none") +
+  scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
   labs(title = "",  subtitle = "Fifth", color = "") +
    theme(plot.title = element_text(hjust = 0.5)) +
   theme(
@@ -1194,21 +1009,15 @@ sig_tips_3 <- rep(4, 15)
 names(sig_tips_3) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
 sig_tips_3[names(sig_tips_3) %in% sig_tips_names_3] <- 6
 
-near_sig_tips_names_3 <- post_summ$species[post_summ$instar == "sixth" & (post_summ$P_tsr < 0.1 & post_summ$P_tsr > 0.05  | post_summ$P_tsr < 0.95 & post_summ$P_tsr > 0.90) ]
-near_sig_tips_3 <- rep(4, 15)
-names(near_sig_tips_3) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
-near_sig_tips_3[names(near_sig_tips_3) %in% near_sig_tips_names_3] <- 5
-
 proc_6 <- ggtree(tree) +
   geom_tiplab(size = 2, offset = .001) +
   geom_nodepoint(size = 4) +
   geom_tippoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[[3]])), size = 3.5) +
-  #geom_tippoint(aes(size = sig_tips_3), color = "grey20") +
-  #geom_tippoint(aes(size = near_sig_tips_3), color = "grey20") +
+  geom_tippoint(aes(size = sig_tips_3), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[[3]])), size = 3.5) +
    scale_color_viridis(option = "viridis",  limits = c(global_process_min, global_process_max), begin = 0.3) +
-  # scale_size_continuous(range = c(4, 5.5),guide = "none") +
+  scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
   labs( title = "", subtitle = "Sixth", color = "") +
    theme(plot.title = element_text(hjust = 0.5))+
   theme(
@@ -1228,20 +1037,14 @@ sig_tips_4 <- rep(4, 15)
 names(sig_tips_4) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
 sig_tips_4[names(sig_tips_4) %in% sig_tips_names_4] <- 6
 
-near_sig_tips_names_4 <- post_full_summ$species[post_full_summ$P_tsr < 0.1 & post_full_summ$P_tsr > 0.05  | post_full_summ$P_tsr < 0.95 & post_full_summ$P_tsr > 0.90]
-near_sig_tips_4 <- rep(4, 15)
-names(near_sig_tips_4) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
-near_sig_tips_4[names(near_sig_tips_4) %in% near_sig_tips_names_4] <- 5
-
 proc_all <- ggtree(tree) +
   geom_tiplab(size = 2, offset = .001) +
   geom_nodepoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[[4]])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_4), color = "grey20") +
- # geom_tippoint(aes(size = near_sig_tips_4), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[[4]])), size = 3.5) +
-   scale_color_viridis(option = "viridis",  limits = c(global_process_min, global_process_max), begin = 0.3) +
-   scale_size_continuous(range = c(4, 5.5),guide = "none") +
+   scale_color_viridis(option = "viridis", limits = c(global_process_min, global_process_max), begin = 0.3) +
+   scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
   labs(title = "", subtitle = "All",  color = "") +
    theme(plot.title = element_text(hjust = 0.5)) +
   theme(
@@ -1261,21 +1064,15 @@ sig_tips_5 <- rep(4, 15)
 names(sig_tips_5) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
 sig_tips_5[names(sig_tips_5) %in% sig_tips_names_5] <- 6
 
-near_sig_tips_names_5 <- post_mass_summ$species[post_mass_summ$instar == "fourth" & (post_mass_summ$P_tsr < 0.1 & post_mass_summ$P_tsr > 0.05  | post_mass_summ$P_tsr < 0.95 & post_mass_summ$P_tsr > 0.90) ]
-near_sig_tips_5 <- rep(4, 15)
-names(near_sig_tips_5) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
-near_sig_tips_5[names(near_sig_tips_5) %in% near_sig_tips_names_5] <- 5
-
 pattern_4 <- ggtree(tree) +
   geom_tiplab(size = 2, offset = -.004) +
   geom_nodepoint(size = 4) +
   geom_tippoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[5])), size = 3.5) +
-  #geom_tippoint(aes(size = sig_tips_5), color = "grey20") +
-  #geom_tippoint(aes(size = near_sig_tips_5), color = "grey20") +
+  geom_tippoint(aes(size = sig_tips_5), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[5])), size = 3.5) +
    scale_color_viridis(option = "magma",  limits = c(global_pattern_min, global_pattern_max), begin = 0.3) +
-   scale_size_continuous(range = c(4, 5.5),guide = "none") +
+   scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
   scale_x_reverse() +
  labs(title = titles[2], subtitle = "Fourth", color = "") + 
   theme(plot.title = element_text(hjust = 0.5)) +
@@ -1295,21 +1092,15 @@ sig_tips_6 <- rep(4, 15)
 names(sig_tips_6) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
 sig_tips_6[names(sig_tips_6) %in% sig_tips_names_6] <- 6
 
-near_sig_tips_names_6 <- post_mass_summ$species[post_mass_summ$instar == "fifth" & (post_mass_summ$P_tsr < 0.1 & post_mass_summ$P_tsr > 0.05  | post_mass_summ$P_tsr < 0.95 & post_mass_summ$P_tsr > 0.90) ]
-near_sig_tips_6 <- rep(4, 15)
-names(near_sig_tips_6) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
-near_sig_tips_6[names(near_sig_tips_6) %in% near_sig_tips_names_6] <- 5
-
 pattern_5 <- ggtree(tree) +
   geom_tiplab(size = 2, offset = -.004) +
   geom_nodepoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[6])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_6), color = "grey20") +
-  #geom_tippoint(aes(size = near_sig_tips_6), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[6])), size = 3.5) +
    scale_color_viridis(option = "magma",  limits = c(global_pattern_min, global_pattern_max), begin = 0.3) +
   scale_x_reverse() +
-   scale_size_continuous(range = c(4, 5.5),guide = "none") +
+   scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
  labs(title = "",  subtitle = "Fifth", color = "") +
    theme(plot.title = element_text(hjust = 0.5)) +
   theme(
@@ -1327,21 +1118,14 @@ sig_tips_names_7 <- post_mass_summ$species[post_mass_summ$instar == "sixth" & (p
 sig_tips_7 <- rep(4, 15)
 names(sig_tips_7) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
 sig_tips_7[names(sig_tips_7) %in% sig_tips_names_7] <- 6
-
-near_sig_tips_names_7 <- post_mass_summ$species[post_mass_summ$instar == "sixth" & (post_mass_summ$P_tsr < 0.1 & post_mass_summ$P_tsr > 0.05  | post_mass_summ$P_tsr < 0.95 & post_mass_summ$P_tsr > 0.90) ]
-near_sig_tips_7 <- rep(4, 15)
-names(near_sig_tips_7) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
-near_sig_tips_7[names(near_sig_tips_7) %in% near_sig_tips_names_7] <- 5
-
 pattern_6 <- ggtree(tree) +
   geom_tiplab(size = 2, offset = -.004) +
   geom_nodepoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[7])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_7), color = "grey20") +
-  #geom_tippoint(aes(size = near_sig_tips_7), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[7])), size = 3.5) +
    scale_color_viridis(option = "magma",  limits = c(global_pattern_min, global_pattern_max), begin = 0.3) +
-   scale_size_continuous(range = c(4, 5.5),guide = "none") +
+   scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
   scale_x_reverse() +
    scale_size_continuous(range = c(4, 5.5),guide = "none") +
  labs(title = "", subtitle = "Sixth", color = "") +
@@ -1362,21 +1146,15 @@ sig_tips_8 <- rep(4, 15)
 names(sig_tips_8) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
 sig_tips_8[names(sig_tips_8) %in% sig_tips_names_8] <- 6
 
-near_sig_tips_names_8 <- post_full_mass_summ$species[(post_full_mass_summ$P_tsr < 0.1 & post_full_mass_summ$P_tsr > 0.05  | post_full_mass_summ$P_tsr < 0.95 & post_full_mass_summ$P_tsr > 0.90) ]
-near_sig_tips_8 <- rep(4, 15)
-names(near_sig_tips_8) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
-near_sig_tips_8[names(near_sig_tips_8) %in% near_sig_tips_names_8] <- 5
-
 pattern_all <- ggtree(tree) +
   geom_tiplab(size = 2, offset = -.004) +
   geom_nodepoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[8])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_8), color = "grey20") +
-  #geom_tippoint(aes(size = near_sig_tips_7), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[8])), size = 3.5) +
    scale_color_viridis(option = "magma",  limits = c(global_pattern_min, global_pattern_max), begin = 0.3) +
   scale_x_reverse() +
-   scale_size_continuous(range = c(4, 5.5),guide = "none") +
+   scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
  labs(title = "", subtitle = "All", color = "") +
    theme(plot.title = element_text(hjust = 0.5)) +
   theme(
@@ -1394,7 +1172,7 @@ plot_list <- list(proc_4, pattern_4, proc_5, pattern_5, proc_6, pattern_6, proc_
 
 grid <- grid.arrange(grobs=plot_list, ncol=2)
 
-#ggsave(grid, filename = "../output/ASE_v3.pdf", device = "pdf", width = 180, height = 220, units = "mm", dpi = 600)
+#ggsave(grid, filename = "../output/R1/ASE_v3.pdf", device = "pdf", width = 180, height = 220, units = "mm", dpi = 600)
 ```
 
 ```{r}
