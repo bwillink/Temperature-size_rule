@@ -350,7 +350,7 @@ p2 <-  ggplot(data = df_combined, aes(y = GR, x = Instar, color = as.factor(accl
   theme_minimal(base_size = 9) + 
   theme(legend.position = "top", panel.grid = element_blank(), panel.border = element_rect(color = "gray"), axis.ticks = element_line(color = "grey")) +
  labs(y = expression(atop("Growth rate",
-                         "(Log"[10]*"(mass ratio)" %.% "days to moult"^-1*")")),
+                         "(Log"[10]*"(mass)" %.% "days to moult"^-1*")")),
      x = "Instar",
      color = "Acclimation \ntemperature (\u00B0C)") +
   theme(strip.text.x = element_text(hjust = 0, vjust = 1, margin=margin(l=0)))
@@ -487,13 +487,71 @@ post_summ %>% kbl(digits=3) %>%
 #write.table(post_summ, file = "../output/TSR_process_stage_summary.csv", quote = F, row.names = F, sep = ",")
 ```
 
+Estimate contrasts
+
+```{r, message=FALSE}
+
+# between acclimation temperatures
+temp_cont <- post_final %>% group_by(species,instar) %>% 
+  summarise(mean_dev = mean(dev),
+            lwr_dev = HPDinterval(mcmc(dev))[1],
+            upr_dev = HPDinterval(mcmc(dev))[2],
+            P_dev = sum((dev < 0)/3000), 
+            mean_gr = mean(growth),
+            lwr_gr = HPDinterval(mcmc(growth))[1],
+            upr_gr = HPDinterval(mcmc(growth))[2],
+            P_gr = sum((growth < 0)/3000),) # probability of opposite to TSR
+
+temp_cont %>% kbl(digits=3) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "center",
+    font_size = 12
+  )
+
+#write.table(temp_cont, "../output/temperature_contrasts.csv", row.names = F, quote = F, sep = ",")
+
+# re-process model results to compute contrasts between stages
+post_stage <-  process_rate_stage_glmm(mcmc = m1$Sol, post_n = post_n, n_species = 8, n_stages =3, n_traits = 2, n_temp = 2)
+
+# between stages
+#t1 = fifth - fourth (transition 1); t2 = sixth - fifth (transition 2)
+stage_cont <- post_stage %>% group_by(species,temp) %>% 
+  summarise(mean_t1_dev = mean(t1_dev),
+            lwr_t1_dev = HPDinterval(mcmc(t1_dev))[1],
+            upr_t1_dev = HPDinterval(mcmc(t1_dev))[2],
+            P_t1_dev = 1- sum((t1_dev < 0)/3000), 
+            mean_t1_gr = mean(t1_growth),
+            lwr_t1_gr = HPDinterval(mcmc(t1_growth))[1],
+            upr_t1_gr = HPDinterval(mcmc(t1_growth))[2],
+            P_t1_gr = sum((t1_growth < 0)/3000),
+            mean_t2_dev = mean( t2_dev),
+            lwr_t2_dev = HPDinterval(mcmc( t2_dev))[1],
+            upr_t2_dev = HPDinterval(mcmc( t2_dev))[2],
+            P_t2_dev = 1- sum(( t2_dev < 0)/3000), 
+            mean_t2_gr = mean( t2_growth),
+            lwr_t2_gr = HPDinterval(mcmc( t2_growth))[1],
+            upr_t2_gr = HPDinterval(mcmc( t2_growth))[2],
+            P_t2_gr = sum(( t2_growth < 0)/3000))
+
+stage_cont %>% kbl(digits=3) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "center",
+    font_size = 12
+  ) 
+
+#write.table(stage_cont, "../output/development_contrasts.csv", row.names = F, quote = F, sep = ",")
+```
+
 ## Final size outcome
 
 Use final mass + initial mass covariate vs using mass ratio
 ```{r}
 dat_l$logMf <- log10(dat_l$Mass)
 dat_l$logMi <- log10(dat_l$StartM)
-dat_l$L     <- dat_l$logMf - dat_l$logMi     # same L as in the DDG analysis
 ```
 
 
@@ -504,24 +562,27 @@ Estimate stage and species-specific "acclimation" effect with MCMCglmm. "acclima
 ```{r, warning=FALSE}
 dat_l$acclimation <- as.factor(dat_l$acclimation)
 
+resid_proxy <- resid(lm(Mass ~ species:Instar:acclimation - 1 +StartM, data = dat_l))
+
 # get SDs
-sMf <- sd(dat_l$logMf, na.rm = TRUE)
-sL  <- sd(dat_l$L,     na.rm = TRUE)
+sMf <- sd(dat_l$Mass, na.rm = TRUE)
 
-## half-normal on the full_id SD with scale = 1 response SD, as before.
+## per-instar residual SDs, in the order of levels(dat_l$Instar)
+s_inst <- tapply(resid_proxy, dat_l$Instar, sd, na.rm = TRUE)
+stopifnot(length(s_inst) == nlevels(dat_l$Instar), all(is.finite(s_inst)))
 
-mk_prior <- function(s) list(
-  R = list(V = s^2, nu = 0.002),
+mk_prior_idh <- function(s_inst, s_id) list(
+  R = list(V  = diag(as.numeric(s_inst)^2), nu = 0.002),
   G = list(G1 = list(V = diag(1), nu = 1000,
-                     alpha.mu = 0, alpha.V = diag(1) * s^2))
+                     alpha.mu = 0, alpha.V = diag(1) * s_id^2))
 )
 
-
-m2 <- MCMCglmm(logMf ~ species:Instar:acclimation - 1 + logMi,
+m2 <- MCMCglmm(Mass ~ species:Instar:acclimation - 1 + StartM,
                random  = ~ full_id,
+               rcov   = ~ idh(Instar):units,
                family  = "gaussian",
                data    = dat_l,
-               prior   = mk_prior(sL),
+               prior   = mk_prior_idh(s_inst, sMf),
                pl      = TRUE,
                nitt    = post_n * thin + burnin,
                burnin  = burnin, thin = thin, verbose = FALSE)
@@ -552,6 +613,7 @@ Plot posterior distributions of mass differences between temperature treatments.
 pattern_within_p <- plot_posteriors(
   dat = post_final_mass,
   x = post_final_mass$diff,
+  scale= "free_x",
   colors = "A",
   x_label = "Difference in mass (10C -20C)", 
   low_label = "TSR",
@@ -561,7 +623,7 @@ pattern_within_p <- plot_posteriors(
 
 pattern_within_p
 
-#ggsave("../output/R1/pattern_within_posteriors.pdf", pattern_within_p, device = "pdf", width = 180, height = 200, units = "mm", dpi = 600)
+#ggsave("../output/pattern_within_posteriors.pdf", pattern_within_p, device = "pdf", width = 180, height = 200, units = "mm", dpi = 600)
 
 ```
 
@@ -584,6 +646,53 @@ post_mass_summ %>% kbl(digits=3) %>%
 
 # write to csv 
 #write.table(post_mass_summ, file = "../output/TSR_pattern_stage_summary.csv", quote = F, row.names = F, sep = ",")
+```
+
+Estimate contrasts
+
+```{r, message=FALSE}
+# between acclimation temperatures
+temp_cont_size <- post_final_mass %>% group_by(species,instar) %>% 
+  summarise(mean_size = mean(diff),
+            lwr_size = HPDinterval(mcmc(diff))[1],
+            upr_size = HPDinterval(mcmc(diff))[2],
+            P_size = sum((diff < 0)/3000)) # probability of opposite to TSR
+
+temp_cont_size %>% kbl(digits=3) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "center",
+    font_size = 12
+  )
+
+#write.table(temp_cont_size, "../output/temperature_contrasts_mass.csv", row.names = F, quote = F, sep = ",")
+
+# re-process model results to compute contrasts between stages
+post_stage_size <-  process_mass_stage_glmm(mcmc = m2$Sol, post_n = post_n, n_species = 8, n_stages =3, n_traits = 1, n_temp = 2)
+
+# between stages
+#t1 = fifth - fourth (transition 1); t2 = sixth - fifth (transition 2)
+stage_cont_size <- post_stage_size %>% 
+  group_by(species, temp) %>% 
+  summarise(mean_t1 = mean(t1),
+            lwr_t1 = HPDinterval(mcmc(t1))[1],
+            upr_t1 = HPDinterval(mcmc(t1))[2],
+            P_t1= 1- sum((t1 < 0)/3000), 
+            mean_t2 = mean( t2),
+            lwr_t2 = HPDinterval(mcmc( t2))[1],
+            upr_t2 = HPDinterval(mcmc( t2))[2],
+            P_t2 = 1- sum(( t2 < 0)/3000))
+
+stage_cont_size %>% kbl(digits=3) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "center",
+    font_size = 12
+  )
+
+#write.table(stage_cont_size, "../output/development_contrasts_mass.csv", row.names = F, quote = F, sep = ",")
 ```
 
 # Full growth period
@@ -733,13 +842,38 @@ post_full_summ %>% kbl(digits=3) %>%
 #write.table(post_full_summ, file = "../output/TSR_process_full_summary.csv", quote = F, row.names = F, sep = ",")
 ```
 
+Estimate contrasts
+
+```{r, message=FALSE}
+# between acclimation temperatures
+
+temp_cont_full <- post_full_final %>% group_by(species,instar) %>% 
+  summarise(mean_dev = mean(dev),
+            lwr_dev = HPDinterval(mcmc(dev))[1],
+            upr_dev = HPDinterval(mcmc(dev))[2],
+            P_dev = sum((dev < 0)/3000), 
+            mean_gr = mean(growth),
+            lwr_gr = HPDinterval(mcmc(growth))[1],
+            upr_gr = HPDinterval(mcmc(growth))[2],
+            P_gr = sum((growth < 0)/3000),) # probability of opposite to TSR
+
+temp_cont_full %>% kbl(digits=3) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "center",
+    font_size = 12
+  )
+
+#write.table(temp_cont_full, "../output/temperature_contrasts_full.csv", row.names = F, quote = F, sep = ",")
+```
+
 ## Final size outcome
 
 Use final mass + initial mass covariate vs using mass ratio
 ```{r}
 dat_full$logMf <- log10(dat_full$Mass)
 dat_full$logMi <- log10(dat_full$StartM)
-dat_full$L     <- dat_full$logMf - dat_full$logMi     # same L as in the DDG analysis
 ```
 
 ### Analysis
@@ -749,19 +883,18 @@ Estimate species-specific "acclimation" effect with MCMCglmm. "acclimation" is t
 dat_full$acclimation <- as.factor(dat_full$acclimation)
 
 # get SDs
-sMf <- sd(dat_full$logMf, na.rm = TRUE)
-sL  <- sd(dat_full$L,     na.rm = TRUE)
+sMf  <- sd(dat_full$Mass, na.rm = TRUE)
 
 ## half-normal on the full_id SD with scale = 1 response SD, as before.
 
 mk_prior <- function(s) list(
   R = list(V = s^2, nu = 0.002))
 
-m4 <- MCMCglmm(logMf ~ species:acclimation - 1 + logMi ,
+m4 <- MCMCglmm(Mass ~ species:acclimation - 1 + StartM ,
                random = NULL,
                family = "gaussian",
                data = dat_full,
-               prior = mk_prior(sL),
+               prior = mk_prior(sMf),
                pl = TRUE,
                nitt = post_n*thin + burnin,
                burnin = burnin,
@@ -830,11 +963,12 @@ pattern_full_across_p <- plot_posteriors(
 
 pattern_full_across_p
 
-#ggsave("../output/R1/pattern_full_across_posteriors.pdf", pattern_full_across_p, device = "pdf", width = 90, height = 200, units = "mm", dpi = 600)
+#ggsave("../output/pattern_full_across_posteriors.pdf", pattern_full_across_p, device = "pdf", width = 90, height = 200, units = "mm", dpi = 600)
 
 ```
 
 Compute support
+
 ```{r, message=FALSE}
 post_full_mass_summ <- post_full_mass %>% group_by(species,instar) %>% 
   summarise(median = median(diff),
@@ -851,9 +985,29 @@ post_full_mass_summ %>% kbl(digits=3) %>%
   )
 
 # write to csv 
-# write.table(post_full_mass_summ, file = "../output/TSR_pattern_full_summary.csv", quote = F, row.names = F, sep = ",")
+#write.table(post_full_mass_summ, file = "../output/TSR_pattern_full_summary.csv", quote = F, row.names = F, sep = ",")
 ```
 
+Estimate contrasts
+
+```{r, message=FALSE}
+# between acclimation temperatures
+temp_cont_full_mass <- post_full_mass %>% group_by(species,instar) %>% 
+  summarise(mean_diff = mean(diff),
+            lwr_diff = HPDinterval(mcmc(diff))[1],
+            upr_diff = HPDinterval(mcmc(diff))[2],
+            P_diff = sum((diff < 0)/3000)) # probability of opposite to TSR
+
+temp_cont_full_mass %>% kbl(digits=3) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "center",
+    font_size = 12
+  )
+
+#write.table(temp_cont_full_mass, "../output/temperature_contrasts_full_mass.csv", row.names = F, quote = F, sep = ",")
+```
 
 # TSR evolution
 
@@ -1172,7 +1326,7 @@ plot_list <- list(proc_4, pattern_4, proc_5, pattern_5, proc_6, pattern_6, proc_
 
 grid <- grid.arrange(grobs=plot_list, ncol=2)
 
-#ggsave(grid, filename = "../output/R1/ASE_v3.pdf", device = "pdf", width = 180, height = 220, units = "mm", dpi = 600)
+#ggsave(grid, filename = "../output/ASE_v3.pdf", device = "pdf", width = 180, height = 220, units = "mm", dpi = 600)
 ```
 
 ```{r}

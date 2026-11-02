@@ -80,6 +80,37 @@ process_rate_glmm <- function(mcmc, post_n, n_species, n_stages, n_traits, n_tem
     mutate(sign = ifelse(rule > 0, "expected", "opposite"))
 }
 
+process_rate_stage_glmm <- function(mcmc, post_n, n_species, n_stages, n_traits, n_temp) {
+  dplyr::select(data.frame(mcmc), contains("acclimation")) %>%
+    # reshape into long format
+    pivot_longer(cols = everything(),
+                 names_to = "rate",
+                 values_to = "value") %>%
+    # shorten strings
+    mutate(rate = gsub("species|Instar|rate|acclimation", "", rate)) %>%
+    # separate "rate" column into three columns, one for each variable
+    separate_wider_delim(
+      col = rate,
+      delim = ".",
+      names = c("species", "instar", "trait", "temp")
+    ) %>%
+    # sort values by species, trait, and temperature (changed "acclimation" for "temp")
+    arrange(species, instar, trait, temp)  %>%
+    # add a character to make values into strings
+    mutate(temp = paste0("t", temp)) %>%
+    # create column for iteration id
+    mutate(it = rep(seq(1:post_n), n_species * n_stages *n_traits * n_temp)) %>%
+    # make columns for rates at each temp
+    pivot_wider(names_from = instar, values_from = value) %>%
+    # compute difference in rates between temps (slope)
+    mutate(t1 = fifth - fourth,
+           t2 = sixth - fifth) %>%
+    # select columns of interest
+    dplyr::select(it, species, temp, trait, t1, t2) %>%
+    # make columns for trait-specific slopes
+    pivot_wider(names_from = trait, values_from = c(t1,t2)) 
+}
+
 
 process_mass_glmm <- function(mcmc, post_n, n_species, n_stages, n_traits, n_temp) {
   dplyr::select(data.frame(mcmc), contains("acclimation")) %>%
@@ -109,9 +140,32 @@ process_mass_glmm <- function(mcmc, post_n, n_species, n_stages, n_traits, n_tem
     mutate(sign = ifelse(diff > 0, "expected", "opposite"))
 }
 
-plot_posteriors <-  function(data, x, colors, x_label, low_label, high_label, main) {
+process_mass_stage_glmm <- function(mcmc, post_n, n_species, n_stages, n_traits, n_temp) {
+  dplyr::select(data.frame(mcmc), contains("acclimation")) %>%
+    # reshape into long format
+    pivot_longer(cols = everything(), names_to = "mass", values_to = "value") %>%
+    # shorten strings
+    mutate(mass = gsub("species|Instar|acclimation", "", mass)) %>%
+    # separate "rate" column into three columns, one for each variable 
+    separate_wider_delim(col = mass, delim = ".", names = c("species", "instar","temp")) %>%
+    # sort values by species, and temperature (changed "acclimation" for "temp")
+    arrange(species, instar, temp)  %>%
+    # add a character to make values into strings
+    mutate(temp = paste0("t", temp)) %>%
+    # create column for iteration id
+    mutate(it = rep(seq(1:post_n),n_species*n_stages*n_traits*n_temp)) %>%
+    # make columns for rates at each stage
+    pivot_wider(names_from = instar, values_from = value) %>%
+    # compute difference in rates between instars
+    mutate(t1 = fifth - fourth,
+           t2 = sixth - fifth) %>%
+    # select columns of interest
+    dplyr::select(it, species, temp, t1, t2)
+}
+
+plot_posteriors <-  function(data, x, colors, x_label, low_label, high_label, main, scale = "fixed") {
   ggplot(data = data, aes(x =x, fill = sign)) +
-    facet_grid(species ~instar) +
+    facet_grid(species ~instar, scales = scale) +
     geom_histogram(position  = "identity",  color = "white", linewidth = 0.2, bins = 30) +
     theme_minimal(base_size = 9) + 
     theme(legend.position = "top", panel.grid = element_blank(), panel.border = element_rect(color = "gray"), axis.ticks = element_line(color = "grey")) +
