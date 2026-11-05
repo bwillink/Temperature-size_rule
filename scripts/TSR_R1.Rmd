@@ -413,7 +413,6 @@ pr1 <- list(R  = list(V = diag(as.numeric(s2)^2), nu = 3),
 )))
 
 
-# we are not interested in fixed effects per se
 m1 <- MCMCglmm(
   value ~ species:Instar:rate:acclimation - 1,
   random = ~ us(rate):full_id,
@@ -1072,8 +1071,8 @@ for(trait_name in colnames(traits)[c(2:4,8)]) {
   all_process_values <- c(all_process_values, x, anc)
 }
 
-global_process_min <- min(all_process_values)
-global_process_max <- max(all_process_values)
+global_process_min <- round(-max(abs(all_process_values)), digits = 2)
+global_process_max <- round(max(abs(all_process_values)), digits = 2)
 
 all_pattern_values <- c()
 for(trait_name in colnames(traits)[c(5:7,9)]) {
@@ -1082,10 +1081,6 @@ for(trait_name in colnames(traits)[c(5:7,9)]) {
   anc <- fastAnc(tree, x)
   all_pattern_values <- c(all_pattern_values, x, anc)
 }
-
-global_pattern_min <- min(all_pattern_values)
-global_pattern_max <- max(all_pattern_values)
-
 
 n_nodes <- tree$Nnode + length(tree$tip.label)
 
@@ -1102,11 +1097,12 @@ node_list <- split(all_values, ceiling(seq_along(all_values) / 15))
 
 Development-growth differential fourth instar
 ```{r, warning=FALSE}
-titles <- c("Development-growth differential",  "Final size outcome")
+titles <- c("(a) Development-growth differential", "(b) Final size outcome")
 
-sig_tips_names_1 <- post_summ$species[post_summ$instar == "fourth" & (post_summ$P_tsr < 0.05 | post_summ$P_tsr > 0.95) ]
+sig_tips_names_1 <- post_summ$species[post_summ$instar == "fourth" &
+                                        (post_summ$P_tsr < 0.05 | post_summ$P_tsr > 0.95)]
 sig_tips_1 <- rep(4, 15)
-names(sig_tips_1) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
+names(sig_tips_1) <- c(tree$tip.label, seq(from = 9 , to = 15, by = 1))
 sig_tips_1[names(sig_tips_1) %in% sig_tips_names_1] <- 6
 
 proc_4 <- ggtree(tree) +
@@ -1115,53 +1111,82 @@ proc_4 <- ggtree(tree) +
   geom_nodepoint(aes(colour = unlist(node_list[[1]])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_1), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[[1]])), size = 3.5) +
-  scale_color_viridis(option = "viridis",  limits = c(global_process_min, global_process_max), begin = 0.3) +
-  scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
-  labs(title = titles[1], subtitle = "Fourth", color = "") +
-   theme(plot.title = element_text(hjust = 0.5)) +
+  scale_color_distiller(
+    palette = "PuOr",
+    type = "div",
+    limits = c(global_process_min, global_process_max),
+    direction = 1,
+    breaks = c(global_process_min, 0, global_process_max)
+  ) +
+  scale_size_continuous(range = c(4, 5.5),
+                        limits = c(4, 6),
+                        guide = "none") +
+  labs(title = titles[1],
+       subtitle = "Fourth",
+       color = "") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   theme(
-  legend.position = c(0, 1),      
+    legend.position = c(0, 1),
     legend.justification = c(0, .7),
-  legend.key.size = unit(0.35, 'cm'),
-  legend.background = element_blank(), 
-   plot.title = element_text(size = 11, face = "bold"),
-  plot.subtitle = element_text(hjust = 0.5))
-
+    legend.key.size = unit(0.35, 'cm'),
+    legend.background = element_blank(),
+    plot.title = element_text(size = 11, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
 ```
 
 Development-growth differential fith instar
 ```{r, warning=FALSE}
-sig_tips_names_2 <- post_summ$species[post_summ$instar == "fifth" & (post_summ$P_tsr < 0.05 | post_summ$P_tsr > 0.95) ]
+sig_tips_names_2 <- post_summ$species[post_summ$instar == "fifth" &
+                                        (post_summ$P_tsr < 0.05 | post_summ$P_tsr > 0.95)]
 sig_tips_2 <- rep(4, 15)
-names(sig_tips_2) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
+names(sig_tips_2) <- c(tree$tip.label, seq(from = 9 , to = 15, by = 1))
 sig_tips_2[names(sig_tips_2) %in% sig_tips_names_2] <- 6
+
+process_min <- -max(abs(unlist(node_list[2])))
+process_max <- max(abs(unlist(node_list[2])))
 
 proc_5 <- ggtree(tree) +
   geom_tiplab(size = 2, offset = .001) +
   geom_nodepoint(size = 4) +
-   geom_tippoint(size = 4) +
+  geom_tippoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[[2]])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_2), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[[2]])), size = 3.5) +
-  scale_color_viridis(option = "viridis",  limits = c(global_process_min, global_process_max), begin = 0.3) +
-  scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
-  labs(title = "",  subtitle = "Fifth", color = "") +
-   theme(plot.title = element_text(hjust = 0.5)) +
+  scale_color_distiller(
+    palette = "PuOr",
+    type = "div",
+    limits = c(global_process_min, global_process_max),
+    direction = 1,
+    breaks = c(global_process_min, 0, global_process_max)
+  ) +
+  scale_size_continuous(range = c(4, 5.5),
+                        limits = c(4, 6),
+                        guide = "none") +
+  labs(title = "",
+       subtitle = "Fifth",
+       color = "") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   theme(
-  legend.position = c(0, 1),      
+    legend.position = c(0, 1),
     legend.justification = c(0, .7),
-  legend.key.size = unit(0.35, 'cm'),
-  legend.background = element_blank(), 
-   plot.title = element_text(size = 11, face = "bold"),
-  plot.subtitle = element_text(hjust = 0.5))
+    legend.key.size = unit(0.35, 'cm'),
+    legend.background = element_blank(),
+    plot.title = element_text(size = 11, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
 ```
 
 Development-growth differential sixth instar
 ```{r, warning=FALSE}
-sig_tips_names_3 <- post_summ$species[post_summ$instar == "sixth" & (post_summ$P_tsr < 0.05 | post_summ$P_tsr > 0.95) ]
+sig_tips_names_3 <- post_summ$species[post_summ$instar == "sixth" &
+                                        (post_summ$P_tsr < 0.05 | post_summ$P_tsr > 0.95)]
 sig_tips_3 <- rep(4, 15)
-names(sig_tips_3) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
+names(sig_tips_3) <- c(tree$tip.label, seq(from = 9 , to = 15, by = 1))
 sig_tips_3[names(sig_tips_3) %in% sig_tips_names_3] <- 6
+
+process_min <- -max(abs(unlist(node_list[3])))
+process_max <- max(abs(unlist(node_list[3])))
 
 proc_6 <- ggtree(tree) +
   geom_tiplab(size = 2, offset = .001) +
@@ -1170,26 +1195,40 @@ proc_6 <- ggtree(tree) +
   geom_nodepoint(aes(colour = unlist(node_list[[3]])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_3), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[[3]])), size = 3.5) +
-   scale_color_viridis(option = "viridis",  limits = c(global_process_min, global_process_max), begin = 0.3) +
-  scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
-  labs( title = "", subtitle = "Sixth", color = "") +
-   theme(plot.title = element_text(hjust = 0.5))+
+  scale_color_distiller(
+    palette = "PuOr",
+    type = "div",
+    limits = c(global_process_min, global_process_max),
+    direction = 1,
+    breaks = c(global_process_min, 0, global_process_max)
+  ) +
+  scale_size_continuous(range = c(4, 5.5),
+                        limits = c(4, 6),
+                        guide = "none") +
+  labs(title = "",
+       subtitle = "Sixth",
+       color = "") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   theme(
-  legend.position = c(0, 1),      
+    legend.position = c(0, 1),
     legend.justification = c(0, .7),
-  legend.key.size = unit(0.35, 'cm'),
-  legend.background = element_blank(), 
-   #plot.title = element_text(size = 11, face = "bold"),
-  plot.subtitle = element_text(hjust = 0.5))
+    legend.key.size = unit(0.35, 'cm'),
+    legend.background = element_blank(),
+    plot.title = element_text(size = 11, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
 ```
 
 Development-growth differential full period
 ```{r, warning=FALSE}
-
-sig_tips_names_4 <- post_full_summ$species[post_full_summ$P_tsr < 0.05 | post_full_summ$P_tsr > 0.95 ]
+sig_tips_names_4 <- post_full_summ$species[post_full_summ$P_tsr < 0.05 |
+                                             post_full_summ$P_tsr > 0.95]
 sig_tips_4 <- rep(4, 15)
-names(sig_tips_4) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
+names(sig_tips_4) <- c(tree$tip.label, seq(from = 9 , to = 15, by = 1))
 sig_tips_4[names(sig_tips_4) %in% sig_tips_names_4] <- 6
+
+process_min <- -max(abs(unlist(node_list[4])))
+process_max <- max(abs(unlist(node_list[4])))
 
 proc_all <- ggtree(tree) +
   geom_tiplab(size = 2, offset = .001) +
@@ -1197,26 +1236,40 @@ proc_all <- ggtree(tree) +
   geom_nodepoint(aes(colour = unlist(node_list[[4]])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_4), color = "grey20") +
   geom_tippoint(aes(colour = unlist(node_list[[4]])), size = 3.5) +
-   scale_color_viridis(option = "viridis", limits = c(global_process_min, global_process_max), begin = 0.3) +
-   scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
-  labs(title = "", subtitle = "All",  color = "") +
-   theme(plot.title = element_text(hjust = 0.5)) +
+  scale_color_distiller(
+    palette = "PuOr",
+    type = "div",
+    limits = c(global_process_min, global_process_max),
+    direction = 1,
+    breaks = c(global_process_min, 0, global_process_max)
+  ) +
+  scale_size_continuous(range = c(4, 5.5),
+                        limits = c(4, 6),
+                        guide = "none") +
+  labs(title = "",
+       subtitle = "All",
+       color = "") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   theme(
-  legend.position = c(0, 1),      
+    legend.position = c(0, 1),
     legend.justification = c(0, .7),
-  legend.key.size = unit(0.35, 'cm'),
-  legend.background = element_blank(), 
-   plot.title = element_text(size = 11, face = "bold"),
-  plot.subtitle = element_text(hjust = 0.5))
+    legend.key.size = unit(0.35, 'cm'),
+    legend.background = element_blank(),
+    plot.title = element_text(size = 11, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
 ```
 
 Final size outcome fourth instar
 ```{r, warning=FALSE}
-
-sig_tips_names_5 <- post_mass_summ$species[post_mass_summ$instar == "fourth" & (post_mass_summ$P_tsr < 0.05 | post_mass_summ$P_tsr > 0.95) ]
+sig_tips_names_5 <- post_mass_summ$species[post_mass_summ$instar == "fourth" &
+                                             (post_mass_summ$P_tsr < 0.05 | post_mass_summ$P_tsr > 0.95)]
 sig_tips_5 <- rep(4, 15)
-names(sig_tips_5) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
+names(sig_tips_5) <- c(tree$tip.label, seq(from = 9 , to = 15, by = 1))
 sig_tips_5[names(sig_tips_5) %in% sig_tips_names_5] <- 6
+
+pattern_min <- round(-max(abs(unlist(node_list[5]))), digits = 2)
+pattern_max <-  round(max(abs(unlist(node_list[5]))), digits = 2)
 
 pattern_4 <- ggtree(tree) +
   geom_tiplab(size = 2, offset = -.004) +
@@ -1224,100 +1277,159 @@ pattern_4 <- ggtree(tree) +
   geom_tippoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[5])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_5), color = "grey20") +
-  geom_tippoint(aes(colour = unlist(node_list[5])), size = 3.5) +
-   scale_color_viridis(option = "magma",  limits = c(global_pattern_min, global_pattern_max), begin = 0.3) +
-   scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
+  geom_tippoint(aes(colour = round(unlist(node_list[5]), digits = 2)), size = 3.5) +
+  scale_color_distiller(
+    palette = "PRGn",
+    type = "div",
+    limits = c(pattern_min, pattern_max),
+    ,
+    direction = -1,
+    breaks = c(pattern_min, 0, pattern_max)
+  ) +
+  scale_size_continuous(range = c(4, 5.5),
+                        limits = c(4, 6),
+                        guide = "none") +
   scale_x_reverse() +
- labs(title = titles[2], subtitle = "Fourth", color = "") + 
+  labs(title = titles[2],
+       subtitle = "Fourth",
+       color = "") +
   theme(plot.title = element_text(hjust = 0.5)) +
   theme(
-  legend.position = c(1, 1),      
+    legend.position = c(1, 1),
     legend.justification = c(1, .7),
-  legend.key.size = unit(0.35, 'cm'),
-  legend.background = element_blank(), 
-   plot.title = element_text(size = 11, face = "bold"),
-  plot.subtitle = element_text(hjust = 0.5))
+    legend.key.size = unit(0.35, 'cm'),
+    legend.background = element_blank(),
+    plot.title = element_text(size = 11, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
 ```
 
 Final size outcome fifth instar
 ```{r, warning=FALSE}
-sig_tips_names_6 <- post_mass_summ$species[post_mass_summ$instar == "fifth" & (post_mass_summ$P_tsr < 0.05 | post_mass_summ$P_tsr > 0.95) ]
+sig_tips_names_6 <- post_mass_summ$species[post_mass_summ$instar == "fifth" &
+                                             (post_mass_summ$P_tsr < 0.05 |
+                                                post_mass_summ$P_tsr > 0.95)]
 sig_tips_6 <- rep(4, 15)
-names(sig_tips_6) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
+names(sig_tips_6) <- c(tree$tip.label, seq(from = 9 , to = 15, by = 1))
 sig_tips_6[names(sig_tips_6) %in% sig_tips_names_6] <- 6
+
+pattern_min <- round(-max(abs(unlist(node_list[6]))), digits = 2)
+pattern_max <-  round(max(abs(unlist(node_list[6]))), digits = 2)
 
 pattern_5 <- ggtree(tree) +
   geom_tiplab(size = 2, offset = -.004) +
   geom_nodepoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[6])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_6), color = "grey20") +
-  geom_tippoint(aes(colour = unlist(node_list[6])), size = 3.5) +
-   scale_color_viridis(option = "magma",  limits = c(global_pattern_min, global_pattern_max), begin = 0.3) +
+  geom_tippoint(aes(colour = round(unlist(node_list[6]), digits = 2)), size = 3.5) +
+  scale_color_distiller(
+    palette = "PRGn",
+    type = "div",
+    limits = c(pattern_min, pattern_max),
+    direction = -1,
+    breaks = c(pattern_min, 0, pattern_max)
+  ) +
   scale_x_reverse() +
-   scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
- labs(title = "",  subtitle = "Fifth", color = "") +
-   theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_continuous(range = c(4, 5.5),
+                        limits = c(4, 6),
+                        guide = "none") +
+  labs(title = "",
+       subtitle = "Fifth",
+       color = "") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   theme(
-  legend.position = c(1, 1),      
+    legend.position = c(1, 1),
     legend.justification = c(1, .7),
-  legend.key.size = unit(0.35, 'cm'),
-  legend.background = element_blank(), 
-   plot.title = element_text(size = 11, face = "bold"),
-  plot.subtitle = element_text(hjust = 0.5))
+    legend.key.size = unit(0.35, 'cm'),
+    legend.background = element_blank(),
+    plot.title = element_text(size = 11, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
 ```
 
 Final size outcome sixth instar
 ```{r, warning=FALSE, message=FALSE}
-sig_tips_names_7 <- post_mass_summ$species[post_mass_summ$instar == "sixth" & (post_mass_summ$P_tsr < 0.05 | post_mass_summ$P_tsr > 0.95) ]
+sig_tips_names_7 <- post_mass_summ$species[post_mass_summ$instar == "sixth" &
+                                             (post_mass_summ$P_tsr < 0.05 | post_mass_summ$P_tsr > 0.95)]
 sig_tips_7 <- rep(4, 15)
-names(sig_tips_7) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
+names(sig_tips_7) <- c(tree$tip.label, seq(from = 9 , to = 15, by = 1))
 sig_tips_7[names(sig_tips_7) %in% sig_tips_names_7] <- 6
+
+pattern_min <- round(-max(abs(unlist(node_list[7]))), digits = 2)
+pattern_max <-  round(max(abs(unlist(node_list[7]))), digits = 2)
+
 pattern_6 <- ggtree(tree) +
   geom_tiplab(size = 2, offset = -.004) +
   geom_nodepoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[7])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_7), color = "grey20") +
-  geom_tippoint(aes(colour = unlist(node_list[7])), size = 3.5) +
-   scale_color_viridis(option = "magma",  limits = c(global_pattern_min, global_pattern_max), begin = 0.3) +
-   scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
+  geom_tippoint(aes(colour = round(unlist(node_list[7]), digits = 2)), size = 3.5) +
+  scale_color_distiller(
+    palette = "PRGn",
+    type = "div",
+    limits = c(pattern_min, pattern_max),
+    direction = -1,
+    breaks = c(pattern_min, 0, pattern_max)
+  ) +
+  scale_size_continuous(range = c(4, 5.5),
+                        limits = c(4, 6),
+                        guide = "none") +
   scale_x_reverse() +
-   scale_size_continuous(range = c(4, 5.5),guide = "none") +
- labs(title = "", subtitle = "Sixth", color = "") +
-   theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_continuous(range = c(4, 5.5), guide = "none") +
+  labs(title = "",
+       subtitle = "Sixth",
+       color = "") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   theme(
-  legend.position = c(1, 1),      
+    legend.position = c(1, 1),
     legend.justification = c(1, .7),
-  legend.key.size = unit(0.35, 'cm'),
-  legend.background = element_blank(),
-   plot.title = element_text(size = 11, face = "bold"),
-  plot.subtitle = element_text(hjust = 0.5))
+    legend.key.size = unit(0.35, 'cm'),
+    legend.background = element_blank(),
+    plot.title = element_text(size = 11, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
 ```
 
 Final size outcome full period
 ```{r, warning=FALSE}
-sig_tips_names_8 <- post_full_mass_summ$species[(post_full_mass_summ$P_tsr < 0.05 | post_full_mass_summ$P_tsr > 0.95) ]
+sig_tips_names_8 <- post_full_mass_summ$species[(post_full_mass_summ$P_tsr < 0.05 |
+                                                   post_full_mass_summ$P_tsr > 0.95)]
 sig_tips_8 <- rep(4, 15)
-names(sig_tips_8) <- c(tree$tip.label,seq(from = 9 , to = 15, by = 1))
+names(sig_tips_8) <- c(tree$tip.label, seq(from = 9 , to = 15, by = 1))
 sig_tips_8[names(sig_tips_8) %in% sig_tips_names_8] <- 6
+
+pattern_min <- round(-max(abs(unlist(node_list[8]))), digits = 2)
+pattern_max <-  round(max(abs(unlist(node_list[8]))), digits = 2)
 
 pattern_all <- ggtree(tree) +
   geom_tiplab(size = 2, offset = -.004) +
   geom_nodepoint(size = 4) +
   geom_nodepoint(aes(colour = unlist(node_list[8])), size = 3.5) +
   geom_tippoint(aes(size = sig_tips_8), color = "grey20") +
-  geom_tippoint(aes(colour = unlist(node_list[8])), size = 3.5) +
-   scale_color_viridis(option = "magma",  limits = c(global_pattern_min, global_pattern_max), begin = 0.3) +
+  geom_tippoint(aes(colour = round(unlist(node_list[8]), digits = 2)), size = 3.5) +
+  scale_color_distiller(
+    palette = "PRGn",
+    type = "div",
+    limits = c(pattern_min, pattern_max),
+    direction = -1,
+    breaks = c(pattern_min, 0, pattern_max)
+  ) +
   scale_x_reverse() +
-   scale_size_continuous(range = c(4, 5.5), limits = c(4,6), guide = "none") +
- labs(title = "", subtitle = "All", color = "") +
-   theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_continuous(range = c(4, 5.5),
+                        limits = c(4, 6),
+                        guide = "none") +
+  labs(title = "",
+       subtitle = "All",
+       color = "") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   theme(
-  legend.position = c(1, 1),      
-  legend.justification = c(1, .7),
-  legend.key.size = unit(0.35, 'cm'),
-  legend.background = element_blank(),
-   plot.title = element_text(size = 11, face = "bold"),
-  plot.subtitle = element_text(hjust = 0.5))
+    legend.position = c(1, 1),
+    legend.justification = c(1, .7),
+    legend.key.size = unit(0.35, 'cm'),
+    legend.background = element_blank(),
+    plot.title = element_text(size = 11, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
 ```
 
 Plot all
@@ -1326,7 +1438,7 @@ plot_list <- list(proc_4, pattern_4, proc_5, pattern_5, proc_6, pattern_6, proc_
 
 grid <- grid.arrange(grobs=plot_list, ncol=2)
 
-#ggsave(grid, filename = "../output/ASE_v3.pdf", device = "pdf", width = 180, height = 220, units = "mm", dpi = 600)
+#ggsave(grid, filename = "../output/ASE_v4.pdf", device = "pdf", width = 180, height = 220, units = "mm", dpi = 600)
 ```
 
 ```{r}
